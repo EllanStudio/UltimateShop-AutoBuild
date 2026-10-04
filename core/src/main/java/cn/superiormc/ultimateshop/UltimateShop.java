@@ -77,6 +77,7 @@ public final class UltimateShop extends JavaPlugin {
         new ItemManager();
         new LanguageManager();
         new DatabaseManager();
+        TransactionLogger.start();
         new CacheManager();
         new CommandManager();
         new MenuStatusManager();
@@ -116,6 +117,7 @@ public final class UltimateShop extends JavaPlugin {
         ListenerManager.listenerManager.unregisterAllListener();
         MenuStatusManager.menuStatusManager.onPluginDisable();
         DynamicCommandManager.unregisterAll();
+        TransactionLogger.stopAndFlush();
         DatabaseExecutor.stopAcceptingTasks();
         TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fWaiting up to 30 seconds for pending database tasks to finish...");
         DatabaseExecutor.await();

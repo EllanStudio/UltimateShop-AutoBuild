@@ -52,6 +52,15 @@ public class ObjectRandomPlaceholderCache {
         this.nowValue = new ArrayList<>(value);
         this.refreshDoneTime = refreshTime;
         this.initialized = true;
+        if (!cache.canNotModify()) {
+            activateResetTask();
+        }
+    }
+
+    public synchronized void activateResetTask() {
+        if (!initialized || cache.canNotModify()) {
+            return;
+        }
         scheduleResetTask();
     }
 
@@ -63,6 +72,11 @@ public class ObjectRandomPlaceholderCache {
         if (refreshDoneTime != null && !refreshDoneTime.isAfter(CommonUtil.getNowTime())) {
             setRefreshTime();
         }
+        return refreshDoneTime;
+    }
+
+    /** Returns persisted state without refreshing or touching Bukkit scheduling. */
+    public synchronized LocalDateTime getStoredRefreshDoneTime() {
         return refreshDoneTime;
     }
 

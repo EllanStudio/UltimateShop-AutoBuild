@@ -187,7 +187,8 @@ public class MenuStatusManager {
         }
         if (time > 0L && guiStatus.getStatus() != GUIStatus.Status.ALREADY_IN_COOLDOWN) {
             setGUIStatus(player, GUIStatus.of(gui, GUIStatus.Status.ALREADY_IN_COOLDOWN));
-            SchedulerUtil.runTaskLater(() -> removeGUIStatus(player), time);
+            GUIStatus closingStatus = getGUIStatus(player);
+            SchedulerUtil.runTaskLater(() -> openGuis.remove(player.getUniqueId(), closingStatus), time);
         }
     }
 

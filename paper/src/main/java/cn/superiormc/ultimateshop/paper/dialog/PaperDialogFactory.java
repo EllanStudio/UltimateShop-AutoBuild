@@ -5,6 +5,7 @@ import cn.superiormc.ultimateshop.gui.dialog.DialogResponse;
 import cn.superiormc.ultimateshop.gui.dialog.DialogView;
 import cn.superiormc.ultimateshop.managers.ConfigManager;
 import cn.superiormc.ultimateshop.paper.utils.PaperTextUtil;
+import cn.superiormc.ultimateshop.utils.SchedulerUtil;
 import io.papermc.paper.dialog.Dialog;
 import io.papermc.paper.dialog.DialogResponseView;
 import io.papermc.paper.registry.data.dialog.ActionButton;
@@ -45,8 +46,12 @@ public final class PaperDialogFactory {
 
         List<ActionButton> buttons = new ArrayList<>();
         for (cn.superiormc.ultimateshop.gui.dialog.DialogAction action : view.getActions()) {
-            DialogActionCallback callback = (response, audience) ->
-                    gui.handleAction(action.getId(), response(view, response), generation);
+            DialogActionCallback callback = (response, audience) -> {
+                if (audience instanceof Player actor && actor.getUniqueId().equals(player.getUniqueId())) {
+                    SchedulerUtil.runSync(player,
+                            () -> gui.handleAction(action.getId(), response(view, response), generation));
+                }
+            };
             ActionButton.Builder button = ActionButton.builder(PaperTextUtil.modernParse(action.getLabel(), player))
                     .width(view.getButtonWidth())
                     .action(DialogAction.customClick(callback,
@@ -61,8 +66,11 @@ public final class PaperDialogFactory {
             buttons.add(ActionButton.builder(PaperTextUtil.modernParse(
                             ConfigManager.configManager.getString("menu.dialog.default-button", ""), player))
                     .width(view.getButtonWidth())
-                    .action(DialogAction.customClick((response, audience) -> gui.finishGUI(),
-                            ClickCallback.Options.builder().uses(1).build()))
+                    .action(DialogAction.customClick((response, audience) -> {
+                        if (audience instanceof Player actor && actor.getUniqueId().equals(player.getUniqueId())) {
+                            SchedulerUtil.runSync(player, () -> gui.closeGUI(generation));
+                        }
+                    }, ClickCallback.Options.builder().uses(1).build()))
                     .build());
         }
 

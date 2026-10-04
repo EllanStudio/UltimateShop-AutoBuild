@@ -1,17 +1,26 @@
 package cn.superiormc.ultimateshop.database;
 
+import java.util.ArrayDeque;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Map;
+import java.util.Set;
 
 public class DatabaseExecutor {
 
     private static final long SHUTDOWN_WAIT_SECONDS = 30L;
 
     private static final AtomicInteger THREAD_COUNTER = new AtomicInteger();
+
+    /** Pending saves keyed by storage; auto-saves coalesce while quit saves remain ordered. */
+    private static final Map<String, SaveQueue> pendingPlayerSaves = new ConcurrentHashMap<>();
+
+    private static final Set<String> scheduledPlayerSaves = ConcurrentHashMap.newKeySet();
 
     private static TrackingExecutor executor;
 
@@ -45,6 +54,95 @@ public class DatabaseExecutor {
             throw new RejectedExecutionException("UltimateShop database executor is not running");
         }
         return executor;
+    }
+
+    /**
+     * Queue only the latest save request for a storage key. A running save is
+     * never interrupted; a newer request is drained immediately afterwards.
+     */
+    public static synchronized void executePlayerSave(String storageId, Runnable saveTask) {
+        executePlayerSave(storageId, saveTask, true);
+    }
+
+    /**
+     * Queues a save. Auto-saves replace older pending auto-saves; quit saves
+     * are appended so a fast reconnect cannot discard the previous session.
+     */
+    public static synchronized void executePlayerSave(String storageId,
+                                                       Runnable saveTask,
+                                                       boolean replacePending) {
+        if (storageId == null || storageId.isBlank() || saveTask == null) {
+            return;
+        }
+        TrackingExecutor current = executor;
+        if (current == null || current.isShutdown() || !current.isAcceptingTasks()) {
+            throw new RejectedExecutionException("UltimateShop database executor is not running");
+        }
+        SaveQueue queue = pendingPlayerSaves.computeIfAbsent(storageId, ignored -> new SaveQueue());
+        queue.offer(saveTask, replacePending);
+        if (!scheduledPlayerSaves.add(storageId)) {
+            return;
+        }
+        try {
+            current.execute(() -> drainPlayerSaves(storageId));
+        } catch (RejectedExecutionException exception) {
+            scheduledPlayerSaves.remove(storageId);
+            pendingPlayerSaves.remove(storageId, queue);
+            throw exception;
+        }
+    }
+
+    private static void drainPlayerSaves(String storageId) {
+        while (true) {
+            SaveQueue queue;
+            Runnable saveTask;
+            synchronized (DatabaseExecutor.class) {
+                queue = pendingPlayerSaves.get(storageId);
+                saveTask = queue == null ? null : queue.poll();
+                if (saveTask == null) {
+                    if (queue != null && queue.isEmpty()) {
+                        pendingPlayerSaves.remove(storageId, queue);
+                    }
+                    scheduledPlayerSaves.remove(storageId);
+                    return;
+                }
+            }
+            try {
+                saveTask.run();
+            } catch (Throwable throwable) {
+                throwable.printStackTrace();
+            }
+        }
+    }
+
+    private static final class SaveQueue {
+        private Runnable latestAutoSave;
+        private final ArrayDeque<Runnable> forcedSaves = new ArrayDeque<>();
+
+        private synchronized void offer(Runnable saveTask, boolean replacePending) {
+            if (replacePending) {
+                latestAutoSave = saveTask;
+            } else {
+                if (latestAutoSave != null) {
+                    forcedSaves.add(latestAutoSave);
+                    latestAutoSave = null;
+                }
+                forcedSaves.add(saveTask);
+            }
+        }
+
+        private synchronized Runnable poll() {
+            if (!forcedSaves.isEmpty()) {
+                return forcedSaves.poll();
+            }
+            Runnable saveTask = latestAutoSave;
+            latestAutoSave = null;
+            return saveTask;
+        }
+
+        private synchronized boolean isEmpty() {
+            return latestAutoSave == null && forcedSaves.isEmpty();
+        }
     }
 
     public static void stopAcceptingTasks() {
@@ -109,6 +207,8 @@ public class DatabaseExecutor {
             executor.stopAcceptingTasks();
             executor.shutdownNow();
             executor = null;
+            pendingPlayerSaves.clear();
+            scheduledPlayerSaves.clear();
         }
     }
 

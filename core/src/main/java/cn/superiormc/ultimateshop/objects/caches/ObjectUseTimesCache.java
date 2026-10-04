@@ -131,9 +131,9 @@ public class ObjectUseTimesCache {
             return;
         }
 
-        unregisterResetTask(direction);
         LocalDateTime target = refreshTime == null ? getRefreshTime(direction, false) : refreshTime;
         if (isNever(target)) {
+            unregisterResetTask(direction);
             return;
         }
 
@@ -622,7 +622,7 @@ public class ObjectUseTimesCache {
     }
 
     private void refresh(Direction direction) {
-        if (product == null) {
+        if (product == null || cache.canNotModify()) {
             return;
         }
 

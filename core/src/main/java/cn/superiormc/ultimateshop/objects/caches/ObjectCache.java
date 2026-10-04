@@ -177,15 +177,26 @@ public class ObjectCache {
             return new ObjectUseTimesCache(this);
         }
 
-        return useTimesCache.computeIfAbsent(item, key -> {
-            UseTimesStorageKey storageKey = key.getUseTimesStorageKey();
-            ObjectUseTimesCache existing = sharedUseTimesCache.get(storageKey);
+        UseTimesStorageKey storageKey = item.getUseTimesStorageKey();
+        ObjectUseTimesCache existing = sharedUseTimesCache.get(storageKey);
+        if (existing != null) {
+            existing.bindProduct(item);
+            useTimesCache.put(item, existing);
+            return existing;
+        }
+
+        synchronized (this) {
+            if (closed) {
+                return new ObjectUseTimesCache(this);
+            }
+            existing = sharedUseTimesCache.get(storageKey);
             if (existing != null) {
-                existing.bindProduct(key);
+                existing.bindProduct(item);
+                useTimesCache.put(item, existing);
                 return existing;
             }
-
-            int defaultBuyTimes = 0;
+            return useTimesCache.computeIfAbsent(item, key -> {
+                int defaultBuyTimes = 0;
             int defaultSellTimes = 0;
 
             if (ConfigManager.configManager.getBoolean("use-times.set-reset-value-by-default")) {
@@ -206,9 +217,10 @@ public class ObjectCache {
                     null,
                     key
             );
-            sharedUseTimesCache.put(storageKey, created);
-            return created;
-        });
+                sharedUseTimesCache.put(storageKey, created);
+                return created;
+            });
+        }
     }
 
     public synchronized void setUseTimesCache(String shop,
@@ -518,7 +530,7 @@ public class ObjectCache {
     }
 
     public void close() {
-        closed = true;
+        cancelResetTasks();
         if (player != null) {
             TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fUnloaded player data: " + player.getName() + ".");
         }
@@ -531,6 +543,7 @@ public class ObjectCache {
         }
         savedVersion.set(modificationVersion.get());
         ready = true;
+        randomPlaceholderCache.values().forEach(ObjectRandomPlaceholderCache::activateResetTask);
         if (player != null) {
             TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fLoaded player data: " + player.getName() + ".");
         }

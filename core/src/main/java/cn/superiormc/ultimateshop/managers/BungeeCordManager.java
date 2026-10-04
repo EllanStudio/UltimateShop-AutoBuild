@@ -45,7 +45,7 @@ public class BungeeCordManager {
             DataOutputStream msgout = new DataOutputStream(msgbytes);
             msgout.writeUTF(id);
             msgout.writeUTF(nowValue);
-            msgout.writeUTF(lastRefreshTime);
+            msgout.writeUTF(Objects.requireNonNullElse(lastRefreshTime, "null"));
             out.writeShort(msgbytes.toByteArray().length);
             out.write(msgbytes.toByteArray());
             Bukkit.getServer().sendPluginMessage(UltimateShop.instance, "BungeeCord", b.toByteArray());

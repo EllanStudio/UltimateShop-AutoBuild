@@ -109,7 +109,7 @@ public class FormShopGUI extends FormGUI {
 
         tempVal5.title(TextUtil.parse(player, shop.getShopMenuObject().getString("title", shop.getShopDisplayName())
                 .replace("{shop-name}", shop.getShopDisplayName())));
-        tempVal5.validResultHandler(response -> {
+        tempVal5.validResultHandler((submittedForm, response) -> handleResponse(submittedForm, () -> {
             MenuStatusManager.menuStatusManager.removeOpenGUIStatus(player, this);
             AbstractButton button = menuButtons.get(menuItems.get(response.clickedButton()));
             if (button instanceof ObjectItem item) {
@@ -118,8 +118,8 @@ public class FormShopGUI extends FormGUI {
             } else {
                 button.clickEvent(ClickType.LEFT, player);
             }
-        });
-        tempVal5.closedOrInvalidResultHandler(response -> finishGUI());
+        }));
+        tempVal5.closedOrInvalidResultHandler((submittedForm, response) -> handleResponse(submittedForm, this::finishGUI));
         if (getMenu().getString("bedrock.content", null) != null) {
             tempVal5.content(TextUtil.parse(player, getMenu().getString("bedrock.content", "")));
         }
