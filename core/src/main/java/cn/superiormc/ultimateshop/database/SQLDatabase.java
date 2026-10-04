@@ -35,6 +35,19 @@ import java.util.concurrent.CompletableFuture;
 
 public class SQLDatabase extends AbstractDatabase {
 
+    public record TransactionLog(LocalDateTime createdAt,
+                                 String playerUuid,
+                                 String playerName,
+                                 String shopId,
+                                 String shopName,
+                                 String itemId,
+                                 String itemName,
+                                 String action,
+                                 int amount,
+                                 double multiplier,
+                                 String priceText) {
+    }
+
     private HikariDataSource dataSource;
 
     private DatabaseDialect dialect;
@@ -301,13 +314,15 @@ public class SQLDatabase extends AbstractDatabase {
 
     @Override
     public void updateData(ObjectCache cache, boolean quitServer) {
-        ObjectCache.SaveRevision saveRevision = cache.captureSaveRevision(quitServer);
-        CompletableFuture.runAsync(() -> {
+        ObjectCache.SaveRevision saveRevision;
+        PlayerDataSnapshot snapshot;
+        synchronized (cache.getSaveLock()) {
+            saveRevision = cache.captureSaveRevision(quitServer);
+            snapshot = PlayerDataSnapshot.from(cache);
+        }
+        DatabaseExecutor.executePlayerSave(snapshot.storageId(), () -> {
             try {
-                boolean saved;
-                synchronized (cache.getSaveLock()) {
-                    saved = saveSections(cache, saveRevision);
-                }
+                boolean saved = saveSections(snapshot, saveRevision);
                 if (saved) {
                     cache.markSaved(saveRevision);
                 }
@@ -318,10 +333,10 @@ public class SQLDatabase extends AbstractDatabase {
                     cache.finishAutoSave();
                 }
             }
-        }, DatabaseExecutor.getExecutor());
+        }, !quitServer);
     }
 
-    private boolean saveSections(ObjectCache cache, ObjectCache.SaveRevision saveRevision) {
+    private boolean saveSections(PlayerDataSnapshot snapshot, ObjectCache.SaveRevision saveRevision) {
         if (!saveRevision.hasSections()) {
             return true;
         }
@@ -331,17 +346,17 @@ public class SQLDatabase extends AbstractDatabase {
             try {
                 conn.setAutoCommit(false);
                 if (saveRevision.includes(ObjectCache.DirtySection.USE_TIMES)) {
-                    saveUseTimes(conn, cache);
+                    saveUseTimes(conn, snapshot);
                 }
                 if (saveRevision.includes(ObjectCache.DirtySection.FAVOURITES)) {
-                    saveFavourites(conn, cache);
+                    saveFavourites(conn, snapshot);
                 }
                 if (!UltimateShop.freeVersion) {
                     if (saveRevision.includes(ObjectCache.DirtySection.RANDOM_PLACEHOLDERS)) {
-                        savePlaceholders(conn, cache);
+                        savePlaceholders(conn, snapshot);
                     }
                     if (saveRevision.includes(ObjectCache.DirtySection.CUSTOM_PLACEHOLDERS)) {
-                        saveCustomPlaceholders(conn, cache);
+                        saveCustomPlaceholders(conn, snapshot);
                     }
                 }
                 conn.commit();
@@ -369,11 +384,11 @@ public class SQLDatabase extends AbstractDatabase {
         }
     }
 
-    private void saveFavourites(Connection conn, ObjectCache cache) throws SQLException {
-        if (cache.isServer()) {
+    private void saveFavourites(Connection conn, PlayerDataSnapshot snapshot) throws SQLException {
+        if (snapshot.server()) {
             return;
         }
-        String playerUUID = cache.getPlayer().getUniqueId().toString();
+        String playerUUID = snapshot.storageId();
 
         try (PreparedStatement deletePs = conn.prepareStatement(dialect.deleteFavourites());
              PreparedStatement insertPs = conn.prepareStatement(dialect.insertFavourite())) {
@@ -381,7 +396,7 @@ public class SQLDatabase extends AbstractDatabase {
             deletePs.setString(1, playerUUID);
             deletePs.executeUpdate();
 
-            for (Map.Entry<String, List<FavouriteProductReference>> entry : cache.getFavouriteProductCache().entrySet()) {
+            for (Map.Entry<String, List<FavouriteProductReference>> entry : snapshot.favourites().entrySet()) {
                 List<FavouriteProductReference> references = entry.getValue();
                 for (int i = 0; i < references.size(); i++) {
                     FavouriteProductReference reference = references.get(i);
@@ -404,16 +419,13 @@ public class SQLDatabase extends AbstractDatabase {
         }
     }
 
-    private void saveUseTimes(Connection conn, ObjectCache cache) throws SQLException {
-        String playerUUID = cache.isServer()
-                ? "Global-Server"
-                : cache.getPlayer().getUniqueId().toString();
-
+    private void saveUseTimes(Connection conn, PlayerDataSnapshot snapshot) throws SQLException {
+        String playerUUID = snapshot.storageId();
         String sql = dialect.upsertUseTimes();
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            for (Map.Entry<UseTimesStorageKey, ObjectUseTimesCache> entry : cache.getSharedUseTimesCache().entrySet()) {
+            for (Map.Entry<UseTimesStorageKey, PlayerDataSnapshot.UseTimesSnapshot> entry
+                    : snapshot.useTimes().entrySet()) {
                 writeUseTimesCache(ps, playerUUID, entry.getKey(), entry.getValue());
             }
 
@@ -426,28 +438,28 @@ public class SQLDatabase extends AbstractDatabase {
     private void writeUseTimesCache(PreparedStatement ps,
                                     String playerUUID,
                                     UseTimesStorageKey key,
-                                    ObjectUseTimesCache cache) throws SQLException {
-        if (cache == null || cache.isEmpty()) {
+                                    PlayerDataSnapshot.UseTimesSnapshot state) throws SQLException {
+        if (state == null || state.isEmpty()) {
             return;
         }
         fillUseTimes(
                 ps,
                 playerUUID,
                 key,
-                cache.getBuyUseTimes(),
-                cache.getTotalBuyUseTimes(),
-                cache.getSellUseTimes(),
-                cache.getTotalSellUseTimes(),
-                cache.getLastBuyTime(),
-                cache.getLastSellTime(),
-                cache.getLastResetBuyTime(),
-                cache.getLastResetSellTime(),
-                cache.getCooldownBuyTime(),
-                cache.getCooldownSellTime(),
-                serializeHistory(cache.getSellHistorySerialized()),
-                serializeHistory(cache.getBuyHistorySerialized()),
-                cache.getTotalSellRevenue(),
-                cache.getTotalBuyCost()
+                state.buyUseTimes(),
+                state.totalBuyUseTimes(),
+                state.sellUseTimes(),
+                state.totalSellUseTimes(),
+                state.lastBuyTime(),
+                state.lastSellTime(),
+                state.lastResetBuyTime(),
+                state.lastResetSellTime(),
+                state.cooldownBuyTime(),
+                state.cooldownSellTime(),
+                serializeHistory(state.sellHistory()),
+                serializeHistory(state.buyHistory()),
+                state.totalSellRevenue(),
+                state.totalBuyCost()
         );
     }
 
@@ -493,26 +505,20 @@ public class SQLDatabase extends AbstractDatabase {
         }
     }
 
-    private void savePlaceholders(Connection conn, ObjectCache cache) throws SQLException {
-        String playerUUID = cache.isServer()
-                ? "Global-Server"
-                : cache.getPlayer().getUniqueId().toString();
-
+    private void savePlaceholders(Connection conn, PlayerDataSnapshot snapshot) throws SQLException {
+        String playerUUID = snapshot.storageId();
         String sql = dialect.upsertRandomPlaceholder();
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            for (ObjectRandomPlaceholderCache ph
-                    : cache.getRandomPlaceholderCache().values()) {
-
-                if ("ONCE".equals(ph.getPlaceholder().getMode())) continue;
-
+            for (PlayerDataSnapshot.RandomPlaceholderSnapshot placeholder
+                    : snapshot.randomPlaceholders()) {
+                if ("ONCE".equals(placeholder.mode())) {
+                    continue;
+                }
                 ps.setString(1, playerUUID);
-                ps.setString(2, ph.getPlaceholder().getID());
-                ps.setString(3,
-                        CommonUtil.translateStringList(ph.getNowValue()));
-                ps.setString(4,
-                        CommonUtil.timeToString(ph.getRefreshDoneTime()));
+                ps.setString(2, placeholder.id());
+                ps.setString(3, placeholder.nowValue());
+                ps.setString(4, placeholder.refreshDoneTime());
 
                 if (dialect.supportBatch()) {
                     ps.addBatch();
@@ -527,20 +533,14 @@ public class SQLDatabase extends AbstractDatabase {
         }
     }
 
-    private void saveCustomPlaceholders(Connection conn, ObjectCache cache) throws SQLException {
-        String playerUUID = cache.isServer()
-                ? "Global-Server"
-                : cache.getPlayer().getUniqueId().toString();
-
+    private void saveCustomPlaceholders(Connection conn, PlayerDataSnapshot snapshot) throws SQLException {
+        String playerUUID = snapshot.storageId();
         String sql = dialect.upsertCustomPlaceholder();
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            for (Map.Entry<ObjectCustomPlaceholder, String> entry
-                    : cache.getCustomPlaceholderCache().entrySet()) {
-
+            for (Map.Entry<String, String> entry : snapshot.customPlaceholders().entrySet()) {
                 ps.setString(1, playerUUID);
-                ps.setString(2, entry.getKey().getID());
+                ps.setString(2, entry.getKey());
                 ps.setString(3, entry.getValue());
 
                 if (dialect.supportBatch()) {
@@ -586,12 +586,14 @@ public class SQLDatabase extends AbstractDatabase {
 
     @Override
     public void updateDataOnDisable(ObjectCache cache, boolean disable) {
-        ObjectCache.SaveRevision saveRevision = cache.captureSaveRevision(true);
+        ObjectCache.SaveRevision saveRevision;
+        PlayerDataSnapshot snapshot;
+        synchronized (cache.getSaveLock()) {
+            saveRevision = cache.captureSaveRevision(true);
+            snapshot = PlayerDataSnapshot.from(cache);
+        }
         try {
-            boolean saved;
-            synchronized (cache.getSaveLock()) {
-                saved = saveSections(cache, saveRevision);
-            }
+            boolean saved = saveSections(snapshot, saveRevision);
             if (saved) {
                 cache.markSaved(saveRevision);
             }
@@ -614,24 +616,59 @@ public class SQLDatabase extends AbstractDatabase {
         if (dataSource == null || dialect == null) {
             return;
         }
-        DatabaseExecutor.getExecutor().execute(() -> {
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement ps = conn.prepareStatement(dialect.insertTransactionLog())) {
-                ps.setTimestamp(1, Timestamp.valueOf(createdAt));
-                ps.setString(2, playerUuid);
-                ps.setString(3, playerName);
-                ps.setString(4, shopId);
-                ps.setString(5, shopName);
-                ps.setString(6, itemId);
-                ps.setString(7, itemName);
-                ps.setString(8, action);
-                ps.setInt(9, amount);
-                ps.setDouble(10, multiplier);
-                ps.setString(11, priceText);
-                ps.executeUpdate();
-            } catch (SQLException e) {
-                e.printStackTrace();
+        DatabaseExecutor.getExecutor().execute(() -> logTransactions(List.of(
+                new TransactionLog(createdAt, playerUuid, playerName, shopId, shopName,
+                        itemId, itemName, action, amount, multiplier, priceText)
+        )));
+    }
+
+    /** Writes a batch in one transaction; returns false so callers can retain failed entries. */
+    public boolean logTransactions(List<TransactionLog> logs) {
+        if (dataSource == null || dialect == null || logs == null || logs.isEmpty()) {
+            return false;
+        }
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(dialect.insertTransactionLog())) {
+            boolean originalAutoCommit = conn.getAutoCommit();
+            try {
+                conn.setAutoCommit(false);
+                for (TransactionLog log : logs) {
+                    ps.setTimestamp(1, Timestamp.valueOf(log.createdAt()));
+                    ps.setString(2, log.playerUuid());
+                    ps.setString(3, log.playerName());
+                    ps.setString(4, log.shopId());
+                    ps.setString(5, log.shopName());
+                    ps.setString(6, log.itemId());
+                    ps.setString(7, log.itemName());
+                    ps.setString(8, log.action());
+                    ps.setInt(9, log.amount());
+                    ps.setDouble(10, log.multiplier());
+                    ps.setString(11, log.priceText());
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+                conn.commit();
+                return true;
+            } catch (SQLException exception) {
+                try {
+                    conn.rollback();
+                } catch (SQLException rollbackException) {
+                    exception.addSuppressed(rollbackException);
+                }
+                exception.printStackTrace();
+                return false;
+            } finally {
+                try {
+                    if (!conn.isClosed() && conn.getAutoCommit() != originalAutoCommit) {
+                        conn.setAutoCommit(originalAutoCommit);
+                    }
+                } catch (SQLException exception) {
+                    exception.printStackTrace();
+                }
             }
-        });
+        } catch (SQLException exception) {
+            exception.printStackTrace();
+            return false;
+        }
     }
 }

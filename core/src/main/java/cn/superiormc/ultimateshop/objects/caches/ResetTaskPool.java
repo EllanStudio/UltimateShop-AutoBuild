@@ -7,6 +7,7 @@ import cn.superiormc.ultimateshop.utils.TextUtil;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -16,6 +17,13 @@ public final class ResetTaskPool {
 
     private static final Set<ResetTaskGroup> GROUPS =
             ConcurrentHashMap.newKeySet();
+
+    /** One active group per cache/direction; prevents stale groups after a target changes. */
+    private static final Map<ObjectUseTimesCache, ResetTaskGroup> BUY_ASSIGNMENTS =
+            new ConcurrentHashMap<>();
+
+    private static final Map<ObjectUseTimesCache, ResetTaskGroup> SELL_ASSIGNMENTS =
+            new ConcurrentHashMap<>();
 
     private ResetTaskPool() {}
 
@@ -43,6 +51,11 @@ public final class ResetTaskPool {
         }
 
         ResetTaskGroup group = findOrCreateGroup(refreshTime, buy);
+        Map<ObjectUseTimesCache, ResetTaskGroup> assignments = assignments(buy);
+        ResetTaskGroup previous = assignments.put(cache, group);
+        if (previous != null && previous != group) {
+            removeFromGroup(previous, cache);
+        }
         group.add(cache);
 
         if (ConfigManager.configManager.getBoolean("sell.sell-chest.debug")) {
@@ -69,14 +82,23 @@ public final class ResetTaskPool {
             ObjectUseTimesCache cache,
             boolean buy
     ) {
+        assignments(buy).remove(cache);
         for (ResetTaskGroup group : GROUPS) {
-            if (group.isBuy() == buy && group.remove(cache)) {
-                if (group.isEmpty()) {
-                    group.cancel();
-                    GROUPS.remove(group);
-                }
-                return;
+            if (group.isBuy() == buy && group.remove(cache) && group.isEmpty()) {
+                group.cancel();
+                GROUPS.remove(group);
             }
+        }
+    }
+
+    private static Map<ObjectUseTimesCache, ResetTaskGroup> assignments(boolean buy) {
+        return buy ? BUY_ASSIGNMENTS : SELL_ASSIGNMENTS;
+    }
+
+    private static void removeFromGroup(ResetTaskGroup group, ObjectUseTimesCache cache) {
+        if (group.remove(cache) && group.isEmpty()) {
+            group.cancel();
+            GROUPS.remove(group);
         }
     }
 
@@ -176,6 +198,7 @@ public final class ResetTaskPool {
 
         private void run() {
             for (ObjectUseTimesCache cache : caches) {
+                assignments(buy).remove(cache, this);
                 if (buy) {
                     cache.refreshBuyTimes();
                 } else {

@@ -156,13 +156,15 @@ public class YamlDatabase extends AbstractDatabase {
 
     @Override
     public void updateData(ObjectCache cache, boolean quitServer) {
-        ObjectCache.SaveRevision saveRevision = cache.captureSaveRevision(true);
-        CompletableFuture.runAsync(() -> {
+        ObjectCache.SaveRevision saveRevision;
+        PlayerDataSnapshot snapshot;
+        synchronized (cache.getSaveLock()) {
+            saveRevision = cache.captureSaveRevision(quitServer);
+            snapshot = PlayerDataSnapshot.from(cache);
+        }
+        DatabaseExecutor.executePlayerSave(snapshot.storageId(), () -> {
             try {
-                boolean saved;
-                synchronized (cache.getSaveLock()) {
-                    saved = saveData(cache);
-                }
+                boolean saved = saveData(snapshot);
                 if (saved) {
                     cache.markSaved(saveRevision);
                 }
@@ -173,17 +175,19 @@ public class YamlDatabase extends AbstractDatabase {
                     cache.finishAutoSave();
                 }
             }
-        }, DatabaseExecutor.getExecutor());
+        }, !quitServer);
     }
 
     @Override
     public void updateDataOnDisable(ObjectCache cache, boolean disable) {
-        ObjectCache.SaveRevision saveRevision = cache.captureSaveRevision(true);
+        ObjectCache.SaveRevision saveRevision;
+        PlayerDataSnapshot snapshot;
+        synchronized (cache.getSaveLock()) {
+            saveRevision = cache.captureSaveRevision(true);
+            snapshot = PlayerDataSnapshot.from(cache);
+        }
         try {
-            boolean saved;
-            synchronized (cache.getSaveLock()) {
-                saved = saveData(cache);
-            }
+            boolean saved = saveData(snapshot);
             if (saved) {
                 cache.markSaved(saveRevision);
             }
@@ -192,23 +196,23 @@ public class YamlDatabase extends AbstractDatabase {
         }
     }
 
-    private boolean saveData(ObjectCache cache) {
+    private boolean saveData(PlayerDataSnapshot snapshot) {
         if (!dataDir.exists() && !dataDir.mkdirs() && !dataDir.exists()) {
             ErrorManager.errorManager.sendErrorMessage("§cError: Can not create data directory!");
             return false;
         }
 
-        File file = cache.isServer()
+        File file = snapshot.server()
                 ? new File(dataDir, "global.yml")
-                : new File(dataDir, cache.getPlayer().getUniqueId() + ".yml");
+                : new File(dataDir, snapshot.storageId() + ".yml");
 
         YamlConfiguration config = new YamlConfiguration();
 
         ConfigurationSection useTimesSection = config.createSection("useTimes");
-        cache.getSharedUseTimesCache().forEach((key, state) -> writeUseTimesCache(useTimesSection, key, state));
+        snapshot.useTimes().forEach((key, state) -> writeUseTimesCache(useTimesSection, key, state));
 
         ConfigurationSection favouriteSection = config.createSection("favourites");
-        cache.getFavouriteProductCache().forEach((menuName, references) -> {
+        snapshot.favourites().forEach((menuName, references) -> {
             List<String> rawReferences = new ArrayList<>();
             for (FavouriteProductReference reference : references) {
                 rawReferences.add(reference.serialize());
@@ -220,20 +224,16 @@ public class YamlDatabase extends AbstractDatabase {
 
         if (!UltimateShop.freeVersion) {
             ConfigurationSection randomSection = config.createSection("randomPlaceholder");
-            Collection<ObjectRandomPlaceholderCache> placeholders = cache.getRandomPlaceholderCache().values();
+            for (PlayerDataSnapshot.RandomPlaceholderSnapshot placeholder : snapshot.randomPlaceholders()) {
+                if ("ONCE".equals(placeholder.mode())) continue;
 
-            for (ObjectRandomPlaceholderCache ph : placeholders) {
-                if ("ONCE".equals(ph.getPlaceholder().getMode())) continue;
-
-                ConfigurationSection phSection = randomSection.createSection(ph.getPlaceholder().getID());
-                phSection.set("nowValue", CommonUtil.translateStringList(ph.getNowValue()));
-                phSection.set("refreshDoneTime", CommonUtil.timeToString(ph.getRefreshDoneTime()));
+                ConfigurationSection phSection = randomSection.createSection(placeholder.id());
+                phSection.set("nowValue", placeholder.nowValue());
+                phSection.set("refreshDoneTime", placeholder.refreshDoneTime());
             }
 
             ConfigurationSection customSection = config.createSection("customPlaceholder");
-            for (Map.Entry<ObjectCustomPlaceholder, String> entry : cache.getCustomPlaceholderCache().entrySet()) {
-                customSection.set(entry.getKey().getID(), entry.getValue());
-            }
+            snapshot.customPlaceholders().forEach(customSection::set);
         }
 
         try {
@@ -278,37 +278,35 @@ public class YamlDatabase extends AbstractDatabase {
 
     private void writeUseTimesCache(ConfigurationSection root,
                                     UseTimesStorageKey key,
-                                    ObjectUseTimesCache cache) {
-        if (cache == null || cache.isEmpty()) {
+                                    PlayerDataSnapshot.UseTimesSnapshot state) {
+        if (state == null || state.isEmpty()) {
             return;
         }
         ConfigurationSection productSection = getUseTimesSection(root, key);
         writeCommonUseTimes(
                 productSection,
-                cache.getBuyUseTimes(),
-                cache.getTotalBuyUseTimes(),
-                cache.getSellUseTimes(),
-                cache.getTotalSellUseTimes(),
-                toTime(cache.getLastBuyTime()),
-                toTime(cache.getLastSellTime()),
-                toTime(cache.getLastResetBuyTime()),
-                toTime(cache.getLastResetSellTime()),
-                toTime(cache.getCooldownBuyTime()),
-                toTime(cache.getCooldownSellTime())
+                state.buyUseTimes(),
+                state.totalBuyUseTimes(),
+                state.sellUseTimes(),
+                state.totalSellUseTimes(),
+                toTime(state.lastBuyTime()),
+                toTime(state.lastSellTime()),
+                toTime(state.lastResetBuyTime()),
+                toTime(state.lastResetSellTime()),
+                toTime(state.cooldownBuyTime()),
+                toTime(state.cooldownSellTime())
         );
-        List<Map<String, Object>> sellHistory = cache.getSellHistorySerialized();
-        if (!sellHistory.isEmpty()) {
-            productSection.set("sellHistory", sellHistory);
+        if (!state.sellHistory().isEmpty()) {
+            productSection.set("sellHistory", state.sellHistory());
         }
-        List<Map<String, Object>> buyHistory = cache.getBuyHistorySerialized();
-        if (!buyHistory.isEmpty()) {
-            productSection.set("buyHistory", buyHistory);
+        if (!state.buyHistory().isEmpty()) {
+            productSection.set("buyHistory", state.buyHistory());
         }
-        if (cache.getTotalSellRevenue() != 0) {
-            productSection.set("total-sell-revenue", cache.getTotalSellRevenue());
+        if (state.totalSellRevenue() != 0) {
+            productSection.set("total-sell-revenue", state.totalSellRevenue());
         }
-        if (cache.getTotalBuyCost() != 0) {
-            productSection.set("total-buy-cost", cache.getTotalBuyCost());
+        if (state.totalBuyCost() != 0) {
+            productSection.set("total-buy-cost", state.totalBuyCost());
         }
     }
 

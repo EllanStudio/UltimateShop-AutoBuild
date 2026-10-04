@@ -3,6 +3,7 @@ package cn.superiormc.ultimateshop.methods;
 import cn.superiormc.ultimateshop.UltimateShop;
 import cn.superiormc.ultimateshop.database.DatabaseExecutor;
 import cn.superiormc.ultimateshop.listeners.SellStickListener;
+import cn.superiormc.ultimateshop.utils.TransactionLogger;
 import cn.superiormc.ultimateshop.managers.*;
 import cn.superiormc.ultimateshop.objects.menus.ObjectMenu;
 import org.bukkit.Bukkit;
@@ -17,6 +18,7 @@ public class ReloadPlugin {
         DynamicCommandManager.unregisterAll();
         TaskManager.taskManager.cancelTask();
         MenuStatusManager.menuStatusManager.onPluginReload();
+        TransactionLogger.flush();
         DatabaseExecutor.quiesce();
         try {
             DatabaseExecutor.await();
