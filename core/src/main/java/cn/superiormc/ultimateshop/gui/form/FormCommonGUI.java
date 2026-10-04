@@ -48,11 +48,11 @@ public class FormCommonGUI extends FormGUI {
             menuItems.put(tempVal1, slot);
         }
         tempVal2.title(TextUtil.parse(player, commonMenu.getString("title", "Shop")));
-        tempVal2.validResultHandler(response -> {
+        tempVal2.validResultHandler((submittedForm, response) -> handleResponse(submittedForm, () -> {
             menuButtons.get(menuItems.get(response.clickedButton())).clickEvent(ClickType.LEFT, player);
             MenuStatusManager.menuStatusManager.removeOpenGUIStatus(player, this);
-        });
-        tempVal2.closedOrInvalidResultHandler(response -> finishGUI());
+        }));
+        tempVal2.closedOrInvalidResultHandler((submittedForm, response) -> handleResponse(submittedForm, this::finishGUI));
         if (commonMenu.getString("bedrock.content", null) != null) {
             tempVal2.content(TextUtil.parse(player, getMenu().getString("bedrock.content", "")));
         }

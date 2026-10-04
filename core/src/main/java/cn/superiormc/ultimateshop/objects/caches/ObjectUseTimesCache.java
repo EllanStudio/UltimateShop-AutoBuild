@@ -622,7 +622,7 @@ public class ObjectUseTimesCache {
     }
 
     private void refresh(Direction direction) {
-        if (product == null) {
+        if (product == null || cache.canNotModify()) {
             return;
         }
 

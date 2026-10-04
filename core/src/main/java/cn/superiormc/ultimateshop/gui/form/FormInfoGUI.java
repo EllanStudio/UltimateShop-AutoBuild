@@ -133,7 +133,7 @@ public class FormInfoGUI extends FormGUI {
             tempVal2.button(buttonComponent);
         }
         tempVal2.button(back);
-        tempVal2.validResultHandler(response -> {
+        tempVal2.validResultHandler((submittedForm, response) -> handleResponse(submittedForm, () -> {
             MenuStatusManager.menuStatusManager.removeOpenGUIStatus(player, this);
             if (response.clickedButton().equals(buy)) {
                 doThing(true);
@@ -169,8 +169,8 @@ public class FormInfoGUI extends FormGUI {
                     }
                 }
             }
-        });
-        tempVal2.closedOrInvalidResultHandler(response -> finishGUI());
+        }));
+        tempVal2.closedOrInvalidResultHandler((submittedForm, response) -> handleResponse(submittedForm, this::finishGUI));
         form = tempVal2.build();
     }
 

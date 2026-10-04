@@ -128,6 +128,10 @@ public class SellChestManager {
         for (int i = fromIndex; i < toIndex; i++) {
             Location loc = cycleLocations.get(i);
 
+            if (!isLoadedAndRegistered(loc)) {
+                continue;
+            }
+
             if (ConfigManager.configManager.getBoolean("sell.sell-chest.debug")) {
                 TextUtil.sendMessage(null, TextUtil.pluginPrefix() + " §fSelling chest at location: " + loc);
             }
@@ -296,7 +300,12 @@ public class SellChestManager {
     }
 
     public void handleChunkUnload(ChunkUnloadEvent event) {
-        chestLocations.remove(event.getChunk());
+        Set<Location> locations = chestLocations.remove(event.getChunk());
+        if (hologram != null && locations != null) {
+            for (Location location : locations) {
+                hologram.remove(location);
+            }
+        }
     }
 
     public void registerSellChest(Chest chest, Player owner, ObjectSellChest sellChest, int times) {
@@ -423,5 +432,25 @@ public class SellChestManager {
         } else {
             pdc.set(KEY_CHUNK_CHESTS, PersistentDataType.STRING, String.join(";", locations));
         }
+    }
+
+    /**
+     * Avoids accessing a block from a stale batch snapshot after its chunk was
+     * unloaded or its sell-chest registration was removed.
+     */
+    private boolean isLoadedAndRegistered(Location location) {
+        World world = location.getWorld();
+        if (world == null) {
+            return false;
+        }
+
+        int chunkX = location.getBlockX() >> 4;
+        int chunkZ = location.getBlockZ() >> 4;
+        if (!world.isChunkLoaded(chunkX, chunkZ)) {
+            return false;
+        }
+
+        Set<Location> locations = chestLocations.get(world.getChunkAt(chunkX, chunkZ));
+        return locations != null && locations.contains(location);
     }
 }
