@@ -15,6 +15,10 @@ public abstract class DialogGUI extends AbstractGUI {
 
     private long generation;
 
+    private long finishedGeneration = Long.MIN_VALUE;
+
+    private long consumedGeneration = Long.MIN_VALUE;
+
     protected DialogGUI(Player owner) {
         super(owner);
     }
@@ -55,18 +59,40 @@ public abstract class DialogGUI extends AbstractGUI {
         finishGUI();
     }
 
+    @Override
+    public void finishGUI() {
+        consumedGeneration = generation;
+        if (finishedGeneration == generation) {
+            return;
+        }
+        finishedGeneration = generation;
+        super.finishGUI();
+    }
+
     public boolean handleAction(String actionId, DialogResponse response, long expectedGeneration) {
-        if (expectedGeneration != generation || dialog == null) {
+        if (!canHandleResponse(expectedGeneration)) {
             return false;
         }
         for (DialogAction action : dialog.getActions()) {
             if (action.getId().equals(actionId)) {
+                consumedGeneration = expectedGeneration;
                 finishGUI();
                 action.execute(response == null ? DialogResponse.empty() : response);
                 return true;
             }
         }
         return false;
+    }
+
+    public void closeGUI(long expectedGeneration) {
+        if (canHandleResponse(expectedGeneration)) {
+            closeGUI();
+        }
+    }
+
+    private boolean canHandleResponse(long expectedGeneration) {
+        return player.isOnline() && expectedGeneration == generation && expectedGeneration != consumedGeneration
+                && dialog != null && MenuStatusManager.menuStatusManager.getOpeningGUI(player) == this;
     }
 
     public DialogView getDialog() {
