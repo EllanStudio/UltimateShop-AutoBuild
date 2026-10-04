@@ -131,9 +131,9 @@ public class ObjectUseTimesCache {
             return;
         }
 
-        unregisterResetTask(direction);
         LocalDateTime target = refreshTime == null ? getRefreshTime(direction, false) : refreshTime;
         if (isNever(target)) {
+            unregisterResetTask(direction);
             return;
         }
 
