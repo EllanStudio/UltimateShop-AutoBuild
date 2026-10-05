@@ -31,52 +31,47 @@ jobs:
 
       - name: Download external API jars
         run: |
+          set -euo pipefail
           validate_jar() {
             local f="$1"
-            local name="$2"
-            if [ -f "$f" ] && unzip -tq "$f" >/dev/null 2>&1; then
-              return 0
-            else
-              echo "  -> $name is not a valid JAR, deleting (will use local)"
-              rm -f "$f"
-              return 1
-            fi
+            [ -s "$f" ] && unzip -tq "$f" >/dev/null 2>&1
           }
-          echo "Downloading AdvancedEnchantments-API..."
-          if ! wget -q -O core/lib/AdvancedEnchantmentsAPI.jar \
-            "https://raw.githubusercontent.com/ManyouTeam/UltimateShop/master/core/lib/AdvancedEnchantmentsAPI.jar"; then
-            echo "AdvancedEnchantments-API download skipped (using local jar)"
-          else
-            validate_jar core/lib/AdvancedEnchantmentsAPI.jar "AdvancedEnchantments-API"
-          fi
-          echo "Downloading RoyaleEconomyAPI..."
-          if ! wget -q -O core/lib/RoyaleEconomyAPI.jar \
-            "https://drive.google.com/uc?export=download&id=1hKDkZg9yOJZydd2WugaAi9nfWspwEqJr"; then
-            echo "RoyaleEconomyAPI download skipped (using local jar)"
-          else
-            validate_jar core/lib/RoyaleEconomyAPI.jar "RoyaleEconomyAPI"
-          fi
-          echo "Downloading SCore..."
-          if ! wget -q -O core/lib/SCore-5.26.5.17.jar \
-            "https://cdn-alt.modrinth.com/data/ZfcV7L06/versions/ddOkhdsg/SCore-5.26.5.17.jar?mr_download_reason=standalone"; then
-            echo "SCore download skipped (using local jar)"
-          else
-            validate_jar core/lib/SCore-5.26.5.17.jar "SCore"
-          fi
-          echo "Downloading ExecutableItems..."
-          if ! wget -q -O core/lib/ExecutableItems-7.26.5.17.jar \
-            "https://cdn-alt.modrinth.com/data/g8Zwnnmn/versions/YzKhzwRI/ExecutableItems-7.26.5.17.jar?mr_download_reason=standalone"; then
-            echo "ExecutableItems download skipped (using local jar)"
-          else
-            validate_jar core/lib/ExecutableItems-7.26.5.17.jar "ExecutableItems"
-          fi
-          echo "Downloading LegacyCodesCompatibility..."
-          if ! wget -q -O core/lib/LegacyCodesCompatibility.jar \
-            "https://raw.githubusercontent.com/ManyouTeam/UltimateShop/master/core/lib/LegacyCodesCompatibility.jar"; then
-            echo "LegacyCodesCompatibility download skipped (using local jar)"
-          else
-            validate_jar core/lib/LegacyCodesCompatibility.jar "LegacyCodesCompatibility"
-          fi
+          download_or_keep() {
+            local url="$1"
+            local target="$2"
+            local name="$3"
+            local temporary="${target}.download"
+            rm -f "$temporary"
+            echo "Downloading $name..."
+            if curl --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --max-time 300 \
+              -o "$temporary" "$url" && validate_jar "$temporary"; then
+              mv -f "$temporary" "$target"
+              return 0
+            fi
+            rm -f "$temporary"
+            if validate_jar "$target"; then
+              echo "  -> $name download unavailable; using existing valid local JAR"
+              return 0
+            fi
+            rm -f "$target"
+            echo "::error::Unable to obtain a valid $name JAR"
+            return 1
+          }
+          download_or_keep \
+            "https://raw.githubusercontent.com/ManyouTeam/UltimateShop/master/core/lib/AdvancedEnchantmentsAPI.jar" \
+            core/lib/AdvancedEnchantmentsAPI.jar "AdvancedEnchantments-API"
+          download_or_keep \
+            "https://drive.google.com/uc?export=download&id=1hKDkZg9yOJZydd2WugaAi9nfWspwEqJr" \
+            core/lib/RoyaleEconomyAPI.jar "RoyaleEconomyAPI"
+          download_or_keep \
+            "https://cdn.modrinth.com/data/ZfcV7L06/versions/ddOkhdsg/SCore-5.26.5.17.jar?mr_download_reason=standalone" \
+            core/lib/SCore-5.26.5.17.jar "SCore"
+          download_or_keep \
+            "https://cdn.modrinth.com/data/g8Zwnnmn/versions/YzKhzwRI/ExecutableItems-7.26.5.17.jar?mr_download_reason=standalone" \
+            core/lib/ExecutableItems-7.26.5.17.jar "ExecutableItems"
+          download_or_keep \
+            "https://raw.githubusercontent.com/ManyouTeam/UltimateShop/master/core/lib/LegacyCodesCompatibility.jar" \
+            core/lib/LegacyCodesCompatibility.jar "LegacyCodesCompatibility"
 
       - name: Build with Gradle
         run: |
