@@ -82,6 +82,7 @@ jobs:
       - name: Build with Gradle
         run: |
           gradle :paper:testSwingAnimationResolver --no-daemon -PpaperVersion=${{ matrix.paper-version }}
+          gradle :paper:smokePaperAdapter --no-daemon -PpaperVersion=${{ matrix.paper-version }}
           gradle :core:testMath --no-daemon
           gradle :core:testDecay --no-daemon
           gradle :core:testDecayExtended --no-daemon

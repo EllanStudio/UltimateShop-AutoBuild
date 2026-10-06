@@ -14,3 +14,11 @@ tasks.register<JavaExec>("testSwingAnimationResolver") {
     dependsOn(tasks.named("testClasses"))
     classpath = sourceSets["test"].runtimeClasspath
 }
+
+tasks.register<JavaExec>("smokePaperAdapter") {
+    group = "verification"
+    description = "Smoke-load Paper item adapters without resolving removed animation fields"
+    mainClass.set("cn.superiormc.ultimateshop.paper.utils.PaperAdapterStartupSmoke")
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+}
