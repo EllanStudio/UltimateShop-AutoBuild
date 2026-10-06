@@ -108,7 +108,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: UltimateShop-Build
+          name: UltimateShop-Build-${{ matrix.paper-version }}
           path: |
             plugin/build/libs/UltimateShop-*.jar
             !plugin/build/libs/*-sources.jar
