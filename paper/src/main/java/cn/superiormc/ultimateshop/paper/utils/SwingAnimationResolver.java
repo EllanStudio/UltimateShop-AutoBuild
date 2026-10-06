@@ -15,19 +15,24 @@ import java.util.Set;
  * ATTACK_ANIMATION/INTERACT_ANIMATION component split.
  *
  * <p>Do not reference the version-specific fields directly: JVM field
- * resolution would throw NoSuchFieldError before a version check could run.</p>
+ * resolution would throw NoSuchFieldError before a version check could run.
+ * Resolution is lazy because the Paper API's DataComponentTypes class needs a
+ * live registry implementation when it initializes outside a server.</p>
  */
 public final class SwingAnimationResolver {
-    private static final ComponentNames NAMES = classify(
-            Arrays.stream(DataComponentTypes.class.getFields()).map(Field::getName).toList());
-    private static final DataComponentType.Valued<SwingAnimation> LEGACY = resolve("SWING_ANIMATION");
-    private static final DataComponentType.Valued<SwingAnimation> ATTACK = resolve("ATTACK_ANIMATION");
-    private static final DataComponentType.Valued<SwingAnimation> INTERACT = resolve("INTERACT_ANIMATION");
+    private static volatile RuntimeTypes runtimeTypes;
 
     private SwingAnimationResolver() {
     }
 
     public record ComponentNames(boolean legacy, boolean split) {
+    }
+
+    private record RuntimeTypes(
+            ComponentNames names,
+            DataComponentType.Valued<SwingAnimation> legacy,
+            DataComponentType.Valued<SwingAnimation> attack,
+            DataComponentType.Valued<SwingAnimation> interact) {
     }
 
     /** Pure resolver used by unit tests with fake old/split field sets. */
@@ -40,51 +45,73 @@ public final class SwingAnimationResolver {
                 names.contains("ATTACK_ANIMATION") && names.contains("INTERACT_ANIMATION"));
     }
 
+    /** Returns the detected layout; call this only while a Paper server is running. */
     public static ComponentNames componentNames() {
-        return NAMES;
+        return runtime().names();
     }
 
     public static void setUnified(ItemStack item, SwingAnimation animation) {
-        if (NAMES.split() && ATTACK != null && INTERACT != null) {
-            item.setData(ATTACK, animation);
-            item.setData(INTERACT, animation);
-        } else if (LEGACY != null) {
-            item.setData(LEGACY, animation);
+        RuntimeTypes types = runtime();
+        if (types.names().split() && types.attack() != null && types.interact() != null) {
+            item.setData(types.attack(), animation);
+            item.setData(types.interact(), animation);
+        } else if (types.legacy() != null) {
+            item.setData(types.legacy(), animation);
         }
     }
 
     public static void setAttack(ItemStack item, SwingAnimation animation) {
-        if (NAMES.split() && ATTACK != null) {
-            item.setData(ATTACK, animation);
-        } else if (LEGACY != null) {
-            item.setData(LEGACY, animation);
+        RuntimeTypes types = runtime();
+        if (types.names().split() && types.attack() != null) {
+            item.setData(types.attack(), animation);
+        } else if (types.legacy() != null) {
+            item.setData(types.legacy(), animation);
         }
     }
 
     public static void setInteract(ItemStack item, SwingAnimation animation) {
-        if (NAMES.split() && INTERACT != null) {
-            item.setData(INTERACT, animation);
-        } else if (LEGACY != null) {
-            item.setData(LEGACY, animation);
+        RuntimeTypes types = runtime();
+        if (types.names().split() && types.interact() != null) {
+            item.setData(types.interact(), animation);
+        } else if (types.legacy() != null) {
+            item.setData(types.legacy(), animation);
         }
     }
 
     public static SwingAnimation attack(ItemStack item) {
-        if (NAMES.split() && ATTACK != null) {
-            return value(item, ATTACK);
-        }
-        return value(item, LEGACY);
+        RuntimeTypes types = runtime();
+        return types.names().split() && types.attack() != null
+                ? value(item, types.attack()) : value(item, types.legacy());
     }
 
     public static SwingAnimation interact(ItemStack item) {
-        if (NAMES.split() && INTERACT != null) {
-            return value(item, INTERACT);
-        }
-        return value(item, LEGACY);
+        RuntimeTypes types = runtime();
+        return types.names().split() && types.interact() != null
+                ? value(item, types.interact()) : value(item, types.legacy());
     }
 
     private static SwingAnimation value(ItemStack item, DataComponentType.Valued<SwingAnimation> type) {
         return type != null && item.isDataOverridden(type) ? item.getData(type) : null;
+    }
+
+    private static RuntimeTypes runtime() {
+        RuntimeTypes result = runtimeTypes;
+        if (result == null) {
+            synchronized (SwingAnimationResolver.class) {
+                result = runtimeTypes;
+                if (result == null) {
+                    Set<String> names = new LinkedHashSet<>(Arrays.stream(DataComponentTypes.class.getFields())
+                            .map(Field::getName).toList());
+                    result = new RuntimeTypes(
+                            classify(names),
+                            resolve("SWING_ANIMATION"),
+                            resolve("ATTACK_ANIMATION"),
+                            resolve("INTERACT_ANIMATION"));
+                    runtimeTypes = result;
+                }
+            }
+        }
+        return result;
     }
 
     @SuppressWarnings("unchecked")

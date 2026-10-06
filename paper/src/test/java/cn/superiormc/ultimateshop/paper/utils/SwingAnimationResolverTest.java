@@ -16,9 +16,9 @@ public final class SwingAnimationResolverTest {
                 Set.of("ATTACK_ANIMATION"));
         require(!partial.split(), "one split field must not activate split mode");
 
-        SwingAnimationResolver.ComponentNames runtime = SwingAnimationResolver.componentNames();
-        require(runtime.legacy() || runtime.split(), "Paper runtime must expose an animation layout");
-        System.out.println("SwingAnimationResolverTest passed: " + runtime);
+        // Runtime field access is intentionally not performed here: Paper's
+        // DataComponentTypes needs a live registry implementation outside a server.
+        System.out.println("SwingAnimationResolverTest passed: fake old/split layouts");
     }
 
     private static void require(boolean condition, String message) {
