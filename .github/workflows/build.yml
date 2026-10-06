@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - 'feature/new-branch'
+      - 'chore/minecraft-26.3'
+  pull_request:
   workflow_dispatch:
 
 env:
@@ -14,7 +16,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout repository
