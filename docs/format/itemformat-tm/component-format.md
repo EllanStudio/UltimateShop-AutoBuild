@@ -261,3 +261,6 @@ component:
     speed-multiplier: 0.4
 
 ```
+
+> Paper/Minecraft 26.3 removed the vanilla `swing_animation` component and replaced it with `attack_animation` and `interact_animation`. UltimateShop keeps `swing-animation` as a compatibility key and writes the same value to both new components. Use `attack-animation` or `interact-animation` separately when different attack and interaction animations are required.
+
