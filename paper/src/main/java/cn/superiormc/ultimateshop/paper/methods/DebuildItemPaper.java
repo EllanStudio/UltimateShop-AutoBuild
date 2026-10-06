@@ -2,6 +2,7 @@ package cn.superiormc.ultimateshop.paper.methods;
 
 import cn.superiormc.ultimateshop.methods.Items.DebuildItem;
 import cn.superiormc.ultimateshop.paper.utils.PaperTextUtil;
+import cn.superiormc.ultimateshop.paper.utils.SwingAnimationResolver;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
 import com.destroystokyo.paper.profile.ProfileProperty;
 import io.papermc.paper.datacomponent.DataComponentType;
@@ -640,10 +641,8 @@ public class DebuildItemPaper {
             }
 
             // Swing Animation (renamed in Minecraft 26.3)
-            SwingAnimation attackAnimation = item.isDataOverridden(DataComponentTypes.ATTACK_ANIMATION)
-                    ? item.getData(DataComponentTypes.ATTACK_ANIMATION) : null;
-            SwingAnimation interactAnimation = item.isDataOverridden(DataComponentTypes.INTERACT_ANIMATION)
-                    ? item.getData(DataComponentTypes.INTERACT_ANIMATION) : null;
+            SwingAnimation attackAnimation = SwingAnimationResolver.attack(item);
+            SwingAnimation interactAnimation = SwingAnimationResolver.interact(item);
             if (attackAnimation != null && interactAnimation != null
                     && attackAnimation.type() == interactAnimation.type()
                     && attackAnimation.duration() == interactAnimation.duration()) {

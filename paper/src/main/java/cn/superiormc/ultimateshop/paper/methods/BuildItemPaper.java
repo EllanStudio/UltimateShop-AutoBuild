@@ -1,6 +1,7 @@
 package cn.superiormc.ultimateshop.paper.methods;
 
 import cn.superiormc.ultimateshop.paper.utils.PaperTextUtil;
+import cn.superiormc.ultimateshop.paper.utils.SwingAnimationResolver;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
 import cn.superiormc.ultimateshop.utils.TextUtil;
 import com.destroystokyo.paper.profile.PlayerProfile;
@@ -885,16 +886,15 @@ public class BuildItemPaper {
             if (swingAnimationKey != null) {
                 SwingAnimation animation = buildSwingAnimation(swingAnimationKey);
                 // Preserve the old component's behavior: it applied to both attacks and interactions.
-                item.setData(DataComponentTypes.ATTACK_ANIMATION, animation);
-                item.setData(DataComponentTypes.INTERACT_ANIMATION, animation);
+                SwingAnimationResolver.setUnified(item, animation);
             } else {
                 ConfigurationSection attackAnimationKey = section.getConfigurationSection("attack-animation");
                 if (attackAnimationKey != null) {
-                    item.setData(DataComponentTypes.ATTACK_ANIMATION, buildSwingAnimation(attackAnimationKey));
+                    SwingAnimationResolver.setAttack(item, buildSwingAnimation(attackAnimationKey));
                 }
                 ConfigurationSection interactAnimationKey = section.getConfigurationSection("interact-animation");
                 if (interactAnimationKey != null) {
-                    item.setData(DataComponentTypes.INTERACT_ANIMATION, buildSwingAnimation(interactAnimationKey));
+                    SwingAnimationResolver.setInteract(item, buildSwingAnimation(interactAnimationKey));
                 }
             }
 

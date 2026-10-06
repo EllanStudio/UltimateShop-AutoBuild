@@ -1,7 +1,9 @@
+val paperVersion = providers.gradleProperty("paperVersion").getOrElse("26.3.build.157-beta")
+
 dependencies {
     compileOnly(files("lib/LegacyCodesCompatibility.jar"))
     compileOnly("net.kyori:adventure-api:5.2.0")
-    compileOnly("io.papermc.paper:paper-api:26.3.build.157-beta")
+    compileOnly("io.papermc.paper:paper-api:$paperVersion")
     implementation("org.bstats:bstats-bukkit:3.1.0")
     compileOnly("org.geysermc.floodgate:api:2.2.2-SNAPSHOT")
     implementation("com.cronutils:cron-utils:9.2.0")
