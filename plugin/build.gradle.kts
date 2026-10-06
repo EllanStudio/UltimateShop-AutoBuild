@@ -6,7 +6,7 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":spigot"))
     implementation(project(":paper"))
-    compileOnly("io.papermc.paper:paper-api:26.2.build.55-alpha")
+    compileOnly("io.papermc.paper:paper-api:26.3.build.157-beta")
 }
 
 tasks.shadowJar {

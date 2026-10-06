@@ -639,13 +639,21 @@ public class DebuildItemPaper {
                 }
             }
 
-            // Swing Animation
-            if (item.isDataOverridden(DataComponentTypes.SWING_ANIMATION)) {
-                SwingAnimation sa = item.getData(DataComponentTypes.SWING_ANIMATION);
-                if (sa != null) {
-                    ConfigurationSection saSection = section.createSection("swing-animation");
-                    saSection.set("type", sa.type().name());
-                    saSection.set("duration", sa.duration());
+            // Swing Animation (renamed in Minecraft 26.3)
+            SwingAnimation attackAnimation = item.isDataOverridden(DataComponentTypes.ATTACK_ANIMATION)
+                    ? item.getData(DataComponentTypes.ATTACK_ANIMATION) : null;
+            SwingAnimation interactAnimation = item.isDataOverridden(DataComponentTypes.INTERACT_ANIMATION)
+                    ? item.getData(DataComponentTypes.INTERACT_ANIMATION) : null;
+            if (attackAnimation != null && interactAnimation != null
+                    && attackAnimation.type() == interactAnimation.type()
+                    && attackAnimation.duration() == interactAnimation.duration()) {
+                serializeSwingAnimation(section, "swing-animation", attackAnimation);
+            } else {
+                if (attackAnimation != null) {
+                    serializeSwingAnimation(section, "attack-animation", attackAnimation);
+                }
+                if (interactAnimation != null) {
+                    serializeSwingAnimation(section, "interact-animation", interactAnimation);
                 }
             }
 
@@ -676,6 +684,16 @@ public class DebuildItemPaper {
         }
 
         return section;
+    }
+
+    private static void serializeSwingAnimation(
+            ConfigurationSection parent,
+            String key,
+            SwingAnimation animation
+    ) {
+        ConfigurationSection animationSection = parent.createSection(key);
+        animationSection.set("type", animation.type().name());
+        animationSection.set("duration", animation.duration());
     }
 
     private static Object serializeDamageTypes(RegistryKeySet<DamageType> damageTypes) {
