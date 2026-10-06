@@ -1,6 +1,7 @@
 package cn.superiormc.ultimateshop.paper.methods;
 
 import cn.superiormc.ultimateshop.paper.utils.PaperTextUtil;
+import cn.superiormc.ultimateshop.paper.utils.SwingAnimationResolver;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
 import cn.superiormc.ultimateshop.utils.TextUtil;
 import com.destroystokyo.paper.profile.PlayerProfile;
@@ -880,19 +881,21 @@ public class BuildItemPaper {
                 item.setData(DataComponentTypes.PIERCING_WEAPON, builder.build());
             }
 
-            // Swing Animation
+            // Swing Animation (renamed in Minecraft 26.3)
             ConfigurationSection swingAnimationKey = section.getConfigurationSection("swing-animation");
             if (swingAnimationKey != null) {
-                SwingAnimation.Builder builder = SwingAnimation.swingAnimation();
-                String typeStr = swingAnimationKey.getString("type");
-                if (typeStr != null) {
-                    builder.type(Enums.getIfPresent(SwingAnimation.Animation.class, typeStr).or(SwingAnimation.Animation.NONE));
+                SwingAnimation animation = buildSwingAnimation(swingAnimationKey);
+                // Preserve the old component's behavior: it applied to both attacks and interactions.
+                SwingAnimationResolver.setUnified(item, animation);
+            } else {
+                ConfigurationSection attackAnimationKey = section.getConfigurationSection("attack-animation");
+                if (attackAnimationKey != null) {
+                    SwingAnimationResolver.setAttack(item, buildSwingAnimation(attackAnimationKey));
                 }
-                int duration = swingAnimationKey.getInt("duration", -1);
-                if (duration > 0) {
-                    builder.duration(duration);
+                ConfigurationSection interactAnimationKey = section.getConfigurationSection("interact-animation");
+                if (interactAnimationKey != null) {
+                    SwingAnimationResolver.setInteract(item, buildSwingAnimation(interactAnimationKey));
                 }
-                item.setData(DataComponentTypes.SWING_ANIMATION, builder.build());
             }
 
             // Use Effects
@@ -944,6 +947,19 @@ public class BuildItemPaper {
             }
         }
         return item;
+    }
+
+    private static SwingAnimation buildSwingAnimation(ConfigurationSection section) {
+        SwingAnimation.Builder builder = SwingAnimation.swingAnimation();
+        String type = section.getString("type");
+        if (type != null) {
+            builder.type(Enums.getIfPresent(SwingAnimation.Animation.class, type).or(SwingAnimation.Animation.NONE));
+        }
+        int duration = section.getInt("duration", -1);
+        if (duration >= 0) {
+            builder.duration(duration);
+        }
+        return builder.build();
     }
 
     private static KineticWeapon.Condition parseKineticWeaponCondition(

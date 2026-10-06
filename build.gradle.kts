@@ -15,7 +15,7 @@ subprojects {
 
     configurations.configureEach {
         if (isCanBeResolved) {
-            // Upstream Paper 26.2 publishes Java 25 metadata. Resolve against JDK 25
+            // Paper 26.3 publishes Java 25 metadata. Resolve against JDK 25
             // while JavaCompile below still emits Java 21-compatible bytecode.
             attributes.attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25)
         }

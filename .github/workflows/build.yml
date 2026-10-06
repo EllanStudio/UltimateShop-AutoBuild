@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - 'feature/new-branch'
+      - 'chore/minecraft-26.3'
+  pull_request:
   workflow_dispatch:
 
 env:
@@ -12,9 +14,13 @@ env:
 
 jobs:
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        paper-version: ['26.2.build.130-stable', '26.3.build.157-beta']
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Checkout repository
@@ -75,11 +81,14 @@ jobs:
 
       - name: Build with Gradle
         run: |
+          gradle :paper:testSwingAnimationResolver --no-daemon -PpaperVersion=${{ matrix.paper-version }}
+          gradle :paper:smokePaperAdapter --no-daemon -PpaperVersion=${{ matrix.paper-version }}
           gradle :core:testMath --no-daemon
           gradle :core:testDecay --no-daemon
           gradle :core:testDecayExtended --no-daemon
           gradle :core:testPureUtils --no-daemon
-          gradle clean shadowJar --no-daemon
+          gradle clean shadowJar --no-daemon -PpaperVersion=${{ matrix.paper-version }}
+          echo "Paper API matrix: ${{ matrix.paper-version }}"
           if ! javap -verbose -classpath core/build/classes/java/main \
             cn.superiormc.ultimateshop.hooks.economy.EconomyExcellentEconomyHook \
             | grep "major version: 65" >/dev/null; then
@@ -90,6 +99,8 @@ jobs:
           if [ -n "$JAR_FILE" ]; then
             echo "Build successful!"
             ls -lh "$JAR_FILE"
+            unzip -tq "$JAR_FILE" >/dev/null
+            unzip -p "$JAR_FILE" plugin.yml | grep -E '^main:|^api-version:'
           else
             echo "Build failed - no JAR file found"
             exit 1
@@ -98,7 +109,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: UltimateShop-Build
+          name: UltimateShop-Build-${{ matrix.paper-version }}
           path: |
             plugin/build/libs/UltimateShop-*.jar
             !plugin/build/libs/*-sources.jar

@@ -2,6 +2,7 @@ package cn.superiormc.ultimateshop.paper.methods;
 
 import cn.superiormc.ultimateshop.methods.Items.DebuildItem;
 import cn.superiormc.ultimateshop.paper.utils.PaperTextUtil;
+import cn.superiormc.ultimateshop.paper.utils.SwingAnimationResolver;
 import cn.superiormc.ultimateshop.utils.CommonUtil;
 import com.destroystokyo.paper.profile.ProfileProperty;
 import io.papermc.paper.datacomponent.DataComponentType;
@@ -639,13 +640,19 @@ public class DebuildItemPaper {
                 }
             }
 
-            // Swing Animation
-            if (item.isDataOverridden(DataComponentTypes.SWING_ANIMATION)) {
-                SwingAnimation sa = item.getData(DataComponentTypes.SWING_ANIMATION);
-                if (sa != null) {
-                    ConfigurationSection saSection = section.createSection("swing-animation");
-                    saSection.set("type", sa.type().name());
-                    saSection.set("duration", sa.duration());
+            // Swing Animation (renamed in Minecraft 26.3)
+            SwingAnimation attackAnimation = SwingAnimationResolver.attack(item);
+            SwingAnimation interactAnimation = SwingAnimationResolver.interact(item);
+            if (attackAnimation != null && interactAnimation != null
+                    && attackAnimation.type() == interactAnimation.type()
+                    && attackAnimation.duration() == interactAnimation.duration()) {
+                serializeSwingAnimation(section, "swing-animation", attackAnimation);
+            } else {
+                if (attackAnimation != null) {
+                    serializeSwingAnimation(section, "attack-animation", attackAnimation);
+                }
+                if (interactAnimation != null) {
+                    serializeSwingAnimation(section, "interact-animation", interactAnimation);
                 }
             }
 
@@ -676,6 +683,16 @@ public class DebuildItemPaper {
         }
 
         return section;
+    }
+
+    private static void serializeSwingAnimation(
+            ConfigurationSection parent,
+            String key,
+            SwingAnimation animation
+    ) {
+        ConfigurationSection animationSection = parent.createSection(key);
+        animationSection.set("type", animation.type().name());
+        animationSection.set("duration", animation.duration());
     }
 
     private static Object serializeDamageTypes(RegistryKeySet<DamageType> damageTypes) {
